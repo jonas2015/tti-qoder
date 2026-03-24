@@ -1,15 +1,21 @@
 #!/bin/bash
-# Start both backend and frontend services
 
-# Start backend in background
+# Create required directories
+mkdir -p /var/log /run /var/lib/nginx/logs /var/cache/nginx
+
+# Fix permissions for nginx
+touch /var/lib/nginx/logs/error.log
+chmod 777 /var/log /run /var/lib/nginx/logs /var/cache/nginx
+
+# Start backend
 echo "Starting TTi Backend..."
 cd /app/backend
-nohup java -jar -Xmx512m app.jar > /var/log/backend.log 2>&1 &
+nohup java -jar -Xmx512m app.jar > /dev/null 2>&1 &
 BACKEND_PID=$!
 
-# Wait for backend to start
+# Wait for backend
 echo "Waiting for backend to initialize..."
-for i in {1..30}; do
+for i in $(seq 1 30); do
     if curl -sf http://localhost:8080/ > /dev/null 2>&1; then
         echo "Backend is ready!"
         break
@@ -17,18 +23,52 @@ for i in {1..30}; do
     sleep 2
 done
 
-# Start nginx (frontend)
+# Create complete nginx config inline
+cat > /tmp/nginx.conf << 'EOF'
+daemon off;
+worker_processes 1;
+error_log /dev/stderr;
+pid /run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    access_log /dev/stdout;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    server {
+        listen 80;
+        server_name localhost;
+        root /app/frontend;
+        index index.html;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        location /api/ {
+            proxy_pass http://localhost:8080/api/;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}
+EOF
+
+# Start nginx
 echo "Starting TTi Frontend..."
-nginx -g 'daemon off;' &
+nginx -c /tmp/nginx.conf &
 NGINX_PID=$!
 
-# Wait for both processes
 echo "TTi Group is running!"
-echo "- Frontend: http://localhost:80"
-echo "- Backend:  http://localhost:8080"
 
-# Handle shutdown gracefully
+# Handle shutdown
 trap "kill $BACKEND_PID $NGINX_PID 2>/dev/null; exit" SIGTERM SIGINT
 
-# Keep container running
 wait

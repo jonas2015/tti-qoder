@@ -26,7 +26,7 @@ FROM eclipse-temurin:17-jre-alpine
 RUN apk add --no-cache nginx bash curl
 
 # Create directories
-RUN mkdir -p /app/backend /app/frontend /var/log/nginx /run/nginx
+RUN mkdir -p /app/backend /app/frontend
 
 # Copy backend jar
 COPY --from=backend-builder /app/backend/target/*.jar /app/backend/app.jar
@@ -34,25 +34,20 @@ COPY --from=backend-builder /app/backend/target/*.jar /app/backend/app.jar
 # Copy frontend build files
 COPY --from=frontend-builder /app/frontend/dist /app/frontend
 
-# Copy nginx config
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
-
 # Copy startup script
 COPY start-services.sh /app/start-services.sh
 RUN chmod +x /app/start-services.sh
 
-# Create non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
-    chown -R appuser:appgroup /app /var/log/nginx /etc/nginx/conf.d
+# Keep as root for nginx, create app user for backend
+RUN mkdir -p /var/log /run && \
+    addgroup -S appgroup && adduser -S appuser -G appgroup
 
-USER appuser
-
-# Expose ports (80 for nginx, 8080 for backend)
+# Expose ports
 EXPOSE 80 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -sf http://localhost:8080/ || exit 1
 
-# Start both services
+# Start both services as root
 CMD ["/app/start-services.sh"]
