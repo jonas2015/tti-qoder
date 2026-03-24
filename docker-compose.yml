@@ -1,0 +1,18 @@
+# Docker Compose for local development
+# Run: docker-compose up --build
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"    # Frontend (nginx)
+      - "8080:8080" # Backend (Java)
+    environment:
+      - JAVA_OPTS=-Xmx512m
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
