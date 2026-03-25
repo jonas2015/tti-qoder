@@ -22,11 +22,14 @@ RUN mvn package -DskipTests
 # Stage 3: Final runtime image
 FROM eclipse-temurin:17-jre-alpine
 
-# Install nginx for serving frontend
+# Install nginx
 RUN apk add --no-cache nginx bash curl
 
-# Create directories
+# Create app directories
 RUN mkdir -p /app/backend /app/frontend
+
+# Remove default nginx config that conflicts
+RUN rm -rf /etc/nginx/conf.d/*
 
 # Copy backend jar
 COPY --from=backend-builder /app/backend/target/*.jar /app/backend/app.jar
@@ -38,10 +41,6 @@ COPY --from=frontend-builder /app/frontend/dist /app/frontend
 COPY start-services.sh /app/start-services.sh
 RUN chmod +x /app/start-services.sh
 
-# Keep as root for nginx, create app user for backend
-RUN mkdir -p /var/log /run && \
-    addgroup -S appgroup && adduser -S appuser -G appgroup
-
 # Expose ports
 EXPOSE 80 8080
 
@@ -49,5 +48,5 @@ EXPOSE 80 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -sf http://localhost:8080/ || exit 1
 
-# Start both services as root
+# Run as root
 CMD ["/app/start-services.sh"]
